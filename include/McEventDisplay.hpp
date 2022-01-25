@@ -31,7 +31,6 @@ class McEventDisplay : public marlin::Processor {
 
 
         dd4hep::Detector& _detector = dd4hep::Detector::getInstance();
-        int _nEvent;
         double _bField;
         //map of pointer to index in the collection
         std::map<MCParticle*, int> _p2idx;
@@ -41,6 +40,8 @@ class McEventDisplay : public marlin::Processor {
         std::map<MCParticle*, double> _p2pz;
         std::map<int, std::string> _pdg2str;
         std::vector <std::string> _vtxColors = {"yellow", "yellow4", "yellowgreen", "orange", "orange4", "lightpink", "lightcoral", "lightcyan", "lightslateblue", "lightseagreen"};
+
+        int _nEvent;
 };
 
 

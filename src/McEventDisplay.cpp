@@ -72,7 +72,8 @@ void McEventDisplay::processEvent(LCEvent* event){
         std::sort(vertexDecayChain.begin(), vertexDecayChain.end(), [&](MCParticle* a, MCParticle*b){return _p2idx[a] < _p2idx[b];});
         for(auto mc : vertexDecayChain){
             cout<<_p2idx[mc]<<" ("<<mc->getPDG()<<")  x:"<<Vector3D(mc->getVertex()).x()<<"  y:"<<Vector3D(mc->getVertex()).y()<<"  z:"<<Vector3D(mc->getVertex()).z();
-            cout<<" ---> x:"<< Vector3D(mc->getEndpoint()).x()<<"  y:"<<Vector3D(mc->getEndpoint()).y()<<"  z:"<<Vector3D(mc->getEndpoint()).z()<<"    pT: "<<Vector3D(mc->getMomentum()).trans()<<endl;
+            cout<<" ---> x:"<< Vector3D(mc->getEndpoint()).x()<<"  y:"<<Vector3D(mc->getEndpoint()).y()<<"  z:"<<Vector3D(mc->getEndpoint()).z()<<"    pT: "<<Vector3D(mc->getMomentum()).trans()<<"    isOverlay: "<<mc->isOverlay()<<endl;
+            // cout<<"parents - "<<mc->getParents().size()<<"   daughters - "<<mc->getDaughters().size()<<endl;
             drawMcParticle(mc);
         }
         int type = 0; // point
@@ -651,6 +652,8 @@ std::map<int, std::string> McEventDisplay::getPdgNamesMap(){
     pdg2str[-2212] = "p<SUP>-</SUP>";
     pdg2str[2112] = "n";
     pdg2str[-2112] = "n";
+    pdg2str[2224] = "&Delta;<SUP>++</SUP>";
+    pdg2str[-2224] = "&Delta;<SUP>--</SUP>";
     pdg2str[2214] = "&Delta;<SUP>+</SUP>";
     pdg2str[-2214] = "&Delta;<SUP>+</SUP>";
     pdg2str[2114] = "&Delta;<SUP>0</SUP>";
