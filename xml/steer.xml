@@ -5,9 +5,10 @@
 
     <global>
 		<parameter name="LCIOInputFiles">
-            /pnfs/desy.de/ilc/prod/ilc/mc-2020/ild/rec/250-SetA/2f_hadronic_eL_pR/ILD_l5_o1_v02/v02-02/00015161/000/rv02-02.sv02-02.mILD_l5_o1_v02.E250-SetA.I500010.P2f_z_h.eL.pR.n000_002.d_rec_00015161_221.slcio
+            /pnfs/desy.de/ilc/prod/ilc/mc-2020/ild/rec/250-SetA/2f_hadronic_eL_pR/ILD_l5_o1_v02/v02-02/00015161/000/rv02-02.sv02-02.mILD_l5_o1_v02.E250-SetA.I500010.P2f_z_h.eL.pR.n001_209.d_rec_00015161_259.slcio
         </parameter>
 		<parameter name="MaxRecordNumber" value="0" />
+        <parameter name="SkipNEvents" value="0" />
         <parameter name="SupressCheck" value="false" />
 		<parameter name="AllowToModifyEvent" value="false" />
 	</global>
@@ -15,7 +16,7 @@
 
 	<execute>
         <processor name="InitDD4hep" />
-        <processor name="McEventDisplay"/>
+        <processor name="DecayChainDrawer"/>
 	</execute>
 
 
@@ -26,7 +27,7 @@
         </parameter>
     </processor>
 
-    <processor name="McEventDisplay" type="McEventDisplay">
+    <processor name="DecayChainDrawer" type="DecayChainDrawer">
     </processor>
 
 </marlin>

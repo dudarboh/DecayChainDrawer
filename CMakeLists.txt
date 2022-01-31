@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
-project(McEventDisplay)
+project(DecayChainDrawer)
 
 find_package(ILCUTIL REQUIRED COMPONENTS ILCSOFT_CMAKE_MODULES)
 include(ilcsoft_default_settings)
@@ -10,7 +10,7 @@ message(STATUS "C++ flags are set to: " ${CMAKE_CXX_FLAGS})
 
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
-add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCE_DIR}/src/McEventDisplay.cpp ${PROJECT_SOURCE_DIR}/src/ColorMap.cpp)
+add_library(${PROJECT_NAME} SHARED ${PROJECT_SOURCE_DIR}/src/DecayChainDrawer.cpp ${PROJECT_SOURCE_DIR}/src/ColorMap.cpp)
 
 ### DEPENDENCIES ###
 find_package(Marlin REQUIRED)

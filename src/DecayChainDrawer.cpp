@@ -1,4 +1,4 @@
-#include "McEventDisplay.hpp"
+#include "DecayChainDrawer.hpp"
 #include "ColorMap.hpp"
 
 #include "marlinutil/DDMarlinCED.h"
@@ -9,31 +9,23 @@
 using namespace std;
 using dd4hep::rec::Vector3D;
 
-#define MCPARTICLE_LAYER 1
+DecayChainDrawer aDecayChainDrawer;
 
-McEventDisplay aMcEventDisplay;
+DecayChainDrawer::DecayChainDrawer() : Processor("DecayChainDrawer"){}
 
-McEventDisplay::McEventDisplay() : Processor("McEventDisplay"){}
-
-void McEventDisplay::init(){
-    DDMarlinCED::init(this);
-    _bField = MarlinUtil::getBzAtOrigin();
-    _nEvent = 0;
+void DecayChainDrawer::init(){
     _pdg2str = getPdgNamesMap();
 }
 
 
-void McEventDisplay::processEvent(LCEvent* event){
+void DecayChainDrawer::processEvent(LCEvent* event){
     std::cout<<++_nEvent<<std::endl;
     _p2idx.clear();
     _p2vtx.clear();
+    _p2hadronization.clear();
     _p2distance.clear();
     _p2pt.clear();
     _p2pz.clear();
-    DDMarlinCED::newEvent(this, event);
-    // DDMarlinCED::drawDD4hepDetector(_detector, false, vector<string>{""});
-    // DDCEDPickingHandler& pHandler= DDCEDPickingHandler::getInstance();
-    // pHandler.update(event);
 
     LCCollection* mcCol = event->getCollection("MCParticle");
     LCCollection* vertices = event->getCollection("BuildUpVertex");
@@ -43,6 +35,9 @@ void McEventDisplay::processEvent(LCEvent* event){
     Vector3D ip( mc0->getVertex() );
     int nVertices = vertices->getNumberOfElements();
     if (nVertices == 0) return;
+
+
+    // Fill maps
     for(int i=0; i< mcCol->getNumberOfElements(); ++i){
         MCParticle* mc = static_cast<MCParticle*> (mcCol->getElementAt(i));
         _p2idx[mc] = i;
@@ -50,48 +45,56 @@ void McEventDisplay::processEvent(LCEvent* event){
         _p2vtx[mc] = 0;
         _p2pt[mc] = Vector3D(mc->getMomentum()).trans();
         _p2pz[mc] = Vector3D(mc->getMomentum()).z();
-    }
-    for(int i=0; i<nVertices; ++i){
-        Vertex* vertex = static_cast<Vertex*> (vertices->getElementAt(i));
-        vector<MCParticle*> vertexDecayChain = getVertexDecayChain(vertex, navRecoToMc);
 
-        for(int j=0; j< mcCol->getNumberOfElements(); ++j){
-            MCParticle* mc = static_cast<MCParticle*> (mcCol->getElementAt(j));
+        // is MCParticle in the hadronization decay?
+        _p2hadronization[mc] = isInHadronization(mc);
+
+        for(int j=0; j<nVertices; ++j){
+            Vertex* vertex = static_cast<Vertex*> (vertices->getElementAt(j));
+            vector<MCParticle*> vertexDecayChain = getVertexDecayChain(vertex, navRecoToMc);
             bool foundInTheVertexDecay = std::find(vertexDecayChain.begin(), vertexDecayChain.end(), mc) != vertexDecayChain.end();
-            if (foundInTheVertexDecay) _p2vtx[mc] = i+1;
+            if (foundInTheVertexDecay) _p2vtx[mc] = j+1;
         }
     }
 
-    //Draw each vertex
-    for(int i=0; i<vertices->getNumberOfElements(); ++i){
-        Vertex* vertex = static_cast<Vertex*> (vertices->getElementAt(i));
-        Vector3D pos( vertex->getPosition() );
-        vector<MCParticle*> vertexDecayChain = getVertexDecayChain(vertex, navRecoToMc);
-        
-        
-        std::sort(vertexDecayChain.begin(), vertexDecayChain.end(), [&](MCParticle* a, MCParticle*b){return _p2idx[a] < _p2idx[b];});
-        for(auto mc : vertexDecayChain){
-            cout<<_p2idx[mc]<<" ("<<mc->getPDG()<<")  x:"<<Vector3D(mc->getVertex()).x()<<"  y:"<<Vector3D(mc->getVertex()).y()<<"  z:"<<Vector3D(mc->getVertex()).z();
-            cout<<" ---> x:"<< Vector3D(mc->getEndpoint()).x()<<"  y:"<<Vector3D(mc->getEndpoint()).y()<<"  z:"<<Vector3D(mc->getEndpoint()).z()<<"    pT: "<<Vector3D(mc->getMomentum()).trans()<<"    isOverlay: "<<mc->isOverlay()<<endl;
-            // cout<<"parents - "<<mc->getParents().size()<<"   daughters - "<<mc->getDaughters().size()<<endl;
-            drawMcParticle(mc);
+    // draw all MC Particles with their relations:
+    std::stringstream nodes;
+    std::stringstream labels;
+    for(int i=0; i < mcCol->getNumberOfElements(); ++i){
+        MCParticle* mc = static_cast<MCParticle*> (mcCol->getElementAt(i));
+        if (! ( _p2vtx[mc] !=0 || (mc->getGeneratorStatus() != 0 && _p2hadronization[mc] )) ) continue;
+
+        for( auto daughter : mc->getDaughters() ){
+            if (! ( _p2vtx[daughter] !=0 || (daughter->getGeneratorStatus() != 0 && _p2hadronization[daughter] )) ) continue;
+            nodes<<"    "<<_p2idx[mc]<<"->"<<_p2idx[daughter]<<";"<<endl;
         }
-        int type = 0; // point
-        int layer = 1;
-        int size = 10;
-        unsigned long color  = 0x000000;
-        ced_hit_ID(pos.x(), pos.y(), pos.z(), type, layer, size, color, vertex->id() );
+
+        int pdg = mc->getPDG();
+        bool hasName = _pdg2str.find(pdg) != _pdg2str.end();
+        string label;
+        if (hasName) label = _pdg2str[pdg];
+        else label = std::to_string(pdg);
+
+        labels<<_p2idx[mc]<<"[label=<"<<label<<"<BR/>"<<std::fixed<<std::setprecision(2)<<_p2distance[mc]<<" mm<BR/>"<<_p2pt[mc]<<" | "<<_p2pz[mc]<<" GeV"<<">";
+        if (_p2vtx[mc] != 0 ) labels<<" style=\"filled\" fillcolor=\""<<_vtxColors[_p2vtx[mc]-1]<<"\"";
+        labels<<"];"<<endl;
     }
-    createDotDiagram(event);
-    // DDMarlinCED::draw(this);
 
+    //create dot file with a header
+    std::ofstream outfile;
+    outfile.open("test.dot");
+    outfile<<"digraph {"<<endl;
+    outfile<<"    rankdir=TB;"<<endl;
+    outfile<<nodes.str()<<endl;
+    outfile<<labels.str()<<endl;
 
+    outfile<<"}"<<endl;
+    system("rm -f test.svg && dot -Tsvg test.dot > test.svg");
+    system("xdg-open test.svg");  
 }
 
-void McEventDisplay::end(){}
 
-
-void McEventDisplay::fillDecayChainUp(EVENT::MCParticle* mc, std::vector<EVENT::MCParticle*>& decayChain){
+void DecayChainDrawer::fillDecayChainUp(EVENT::MCParticle* mc, std::vector<EVENT::MCParticle*>& decayChain){
     decayChain.push_back(mc);
     // stop iterating up at hadronization
     if(mc->getPDG() == 92) return;
@@ -102,9 +105,9 @@ void McEventDisplay::fillDecayChainUp(EVENT::MCParticle* mc, std::vector<EVENT::
     }
 }
 
-void McEventDisplay::fillDecayChainDown(EVENT::MCParticle* mc, std::vector<EVENT::MCParticle*>& decayChain){
+void DecayChainDrawer::fillDecayChainDown(EVENT::MCParticle* mc, std::vector<EVENT::MCParticle*>& decayChain){
     // stop iterating down at particles not created by generator
-    if(mc->getGeneratorStatus() == 0) return;
+    // if(mc->getGeneratorStatus() == 0) return;
     decayChain.push_back(mc);
     const vector<MCParticle*> daughters = mc->getDaughters();
     for(auto daughter : daughters){
@@ -113,7 +116,7 @@ void McEventDisplay::fillDecayChainDown(EVENT::MCParticle* mc, std::vector<EVENT
     }
 }
 
-EVENT::MCParticle* McEventDisplay::getMcMaxTrackWeight(EVENT::ReconstructedParticle* pfo, UTIL::LCRelationNavigator nav){
+EVENT::MCParticle* DecayChainDrawer::getMcMaxTrackWeight(EVENT::ReconstructedParticle* pfo, UTIL::LCRelationNavigator nav){
     const vector<LCObject*>& mcs = nav.getRelatedToObjects(pfo);
     const vector<float>& weights = nav.getRelatedToWeights(pfo);
     //get index of highest TRACK weight MC particle
@@ -122,7 +125,7 @@ EVENT::MCParticle* McEventDisplay::getMcMaxTrackWeight(EVENT::ReconstructedParti
 }
 
 
-std::vector<EVENT::MCParticle*> McEventDisplay::getVertexDecayChain(EVENT::Vertex* vertex, UTIL::LCRelationNavigator navRecoToMc){
+std::vector<EVENT::MCParticle*> DecayChainDrawer::getVertexDecayChain(EVENT::Vertex* vertex, UTIL::LCRelationNavigator navRecoToMc){
     vector<MCParticle*> decayChain;
     std::vector <ReconstructedParticle*> pfos = vertex->getAssociatedParticle()->getParticles();
     for(auto pfo : pfos){
@@ -132,101 +135,19 @@ std::vector<EVENT::MCParticle*> McEventDisplay::getVertexDecayChain(EVENT::Verte
     return decayChain;    
 }
 
-void McEventDisplay::drawMcParticle(MCParticle* mc){
-    // int genStatus = mc->getGeneratorStatus();
-    // if (genStatus != 1 && genStatus != 0) return;
-    // if (genStatus != 1) return;
-    float charge = mc->getCharge();
-    Vector3D vtx( mc->getVertex() );
-    Vector3D mom( mc->getMomentum() );
-    Vector3D endVtx( mc->getEndpoint() );
-    int id = mc->id();
-    // unsigned long color = ColorMap::NumberToTemperature(mom.r(), minMom, maxMom, 0.8, 0.8);
-    unsigned long color;
-    if (charge == 0) color = 0x00893a;
-    else if (charge < 0) color = 0xd20000;
-    else color = 0x053af9;
-    int marker = 1;
-    int size = 1;
-    if (charge != 0) DDMarlinCED::drawHelix(_bField, charge, vtx.x(), vtx.y(), vtx.z(), mom.x(), mom.y(), mom.z(), marker, size, color, vtx.trans(), endVtx.trans(), std::abs(endVtx.z()), id);
-    else ced_line(vtx.x(),vtx.y(), vtx.z(),endVtx.x(), endVtx.y(), endVtx.z(), 0, size, color);
+
+bool DecayChainDrawer::isInHadronization(EVENT::MCParticle* mc){
+    if ( mc->getPDG() == 92 ) return true;
+    const vector<MCParticle*> parents = mc->getParents();
+    for(auto parent : parents){
+        if ( isInHadronization(parent) ) return true;
+    }
+    return false;
 }
 
-void McEventDisplay::debugPrint(){
-    // cout<<"id        pdg        gen        "<<"parents        "<<"daughters        "<<endl;
-    // for(auto mc : decayChain){
-    //     cout<<_p2idx[mc]<<"        "<<mc->getPDG()<<"        "<<mc->getGeneratorStatus()<<"        ";
-    //     vector<MCParticle*> parents = mc->getParents();
-    //     cout<<"[";
-    //     for(auto p:parents) cout<<_p2idx[p]<<",";
-    //     cout<<"]        ";
-    //     vector<MCParticle*> daughters = mc->getDaughters();
-    //     cout<<"[";
-    //     for(auto d:daughters) cout<<_p2idx[d]<<",";
-    //     cout<<"]";
-    //     cout<<endl;
-    // }
-    ;
-}
 
-void McEventDisplay::createDotDiagram(LCEvent* event){
-    LCCollection* mcCol = event->getCollection("MCParticle");
-    
-    vector<int> initHadronization;
-    vector<MCParticle*> decayChain;
-    for(int i=0; i< mcCol->getNumberOfElements(); ++i){
-        MCParticle* mc = static_cast<MCParticle*> (mcCol->getElementAt(i));
-        if (mc->getPDG() == 92){
-            initHadronization.push_back(_p2idx[mc]);
-            fillDecayChainDown(mc, decayChain);
-        }
-    }
 
-    std::ofstream outfile;
-    outfile.open("test.dot");
-
-    outfile<<"digraph {"<<endl; 
-    outfile<<"    rankdir=TB;"<<endl; 
-    outfile<<"    initial[label=<e<SUP>+</SUP>e<SUP>-</SUP>>];"<<endl;
-
-    int nHadronizations = initHadronization.size();
-    if (nHadronizations == 0){
-        outfile<<"}"<<endl;
-        system("rm -f test.svg && dot -Tsvg test.dot > test.svg");
-        system("xdg-open test.svg");
-        return;
-    }
-    //e+e- to hadronization links
-    outfile<<"    initial->";
-    for(int i=0; i <nHadronizations-1; ++i) outfile<<initHadronization[i]<<",";
-    outfile<<initHadronization.back()<<";"<<endl;    
-
-    // add mc->daughters links for each particles. Ignore particles not created by generator
-    for(auto mc : decayChain){
-        for(auto d : mc->getDaughters()){
-            if (d->getGeneratorStatus() == 0) continue;
-            outfile<<"    "<<_p2idx[mc]<<"->"<<_p2idx[d]<<";"<<endl;
-        }        
-    }
-
-    //add labels
-    for(auto mc : decayChain){
-        int pdg = mc->getPDG();
-        bool hasName = _pdg2str.find(pdg) != _pdg2str.end(); 
-        string label;
-        if (hasName) label = _pdg2str[pdg];
-        else label = std::to_string(pdg);
-
-        outfile<<_p2idx[mc]<<"[label=<"<<label<<"<BR/>"<<std::fixed<<std::setprecision(2)<<_p2distance[mc]<<" mm<BR/>"<<_p2pt[mc]<<" | "<<_p2pz[mc]<<" GeV"<<">";
-        if (_p2vtx[mc] != 0 ) outfile<<" style=\"filled\" fillcolor=\""<<_vtxColors[_p2vtx[mc]-1]<<"\"";
-        outfile<<"];"<<endl;
-    }
-    outfile<<"}"<<endl;
-    system("rm -f test.svg && dot -Tsvg test.dot > test.svg");
-    system("xdg-open test.svg");    
-}
-
-std::map<int, std::string> McEventDisplay::getPdgNamesMap(){
+std::map<int, std::string> DecayChainDrawer::getPdgNamesMap(){
     std::map<int, std::string> pdg2str;
 
     pdg2str[92] = "Hadronization";
